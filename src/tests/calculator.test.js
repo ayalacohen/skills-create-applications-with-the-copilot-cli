@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
 const path = require("node:path");
-const { calculate } = require("../calculator");
+const { calculate, modulo, power, squareRoot } = require("../calculator");
 
 const calculatorPath = path.join(__dirname, "..", "calculator.js");
 
@@ -30,6 +30,53 @@ test("divides numbers, including fractional and negative results", () => {
   assert.equal(calculate(-9, "/", 3), -3);
 });
 
+test("calculates modulo, including negative values", () => {
+  assert.equal(modulo(10, 3), 1);
+  assert.equal(modulo(-10, 3), -1);
+  assert.equal(modulo(10, -3), 1);
+  assert.equal(calculate(10, "%", 3), 1);
+});
+
+test("rejects modulo by zero and non-finite operands", () => {
+  assert.throws(() => modulo(10, 0), {
+    message: "Cannot calculate modulo by zero.",
+  });
+  assert.throws(() => modulo(10, -0), /modulo by zero/);
+  assert.throws(() => modulo(Number.NaN, 3), /finite numbers/);
+});
+
+test("calculates powers for positive, zero, negative, and fractional exponents", () => {
+  assert.equal(power(2, 3), 8);
+  assert.equal(power(5, 0), 1);
+  assert.equal(power(2, -2), 0.25);
+  assert.equal(power(9, 0.5), 3);
+  assert.equal(calculate(2, "**", 3), 8);
+});
+
+test("rejects non-finite power operands", () => {
+  assert.throws(() => power(Number.POSITIVE_INFINITY, 2), /finite numbers/);
+  assert.throws(() => power(2, Number.NaN), /finite numbers/);
+});
+
+test("calculates square roots of zero and positive numbers", () => {
+  assert.equal(squareRoot(0), 0);
+  assert.equal(squareRoot(9), 3);
+  assert.equal(squareRoot(2), Math.sqrt(2));
+});
+
+test("rejects square roots of negative and non-finite numbers", () => {
+  assert.throws(() => squareRoot(-1), {
+    message: "Cannot calculate the square root of a negative number.",
+  });
+  assert.throws(() => squareRoot(Number.POSITIVE_INFINITY), /finite numbers/);
+});
+
+test("matches the extended-operations examples", () => {
+  assert.equal(modulo(5, 2), 1);
+  assert.equal(power(2, 3), 8);
+  assert.equal(squareRoot(16), 4);
+});
+
 test("rejects division by positive and negative zero", () => {
   assert.throws(() => calculate(8, "/", 0), {
     message: "Cannot divide by zero.",
@@ -40,7 +87,7 @@ test("rejects division by positive and negative zero", () => {
 });
 
 test("rejects unsupported operations", () => {
-  assert.throws(() => calculate(8, "%", 3), /Unsupported operation/);
+  assert.throws(() => calculate(8, "&", 3), /Unsupported operation/);
   assert.throws(() => calculate(8, "plus", 3), /Unsupported operation/);
 });
 
@@ -52,13 +99,22 @@ test("rejects non-finite and non-numeric operands", () => {
 });
 
 test("CLI prints a result and exits successfully", () => {
-  const result = spawnSync(process.execPath, [calculatorPath, "2", "+", "3"], {
-    encoding: "utf8",
-  });
+  const examples = [
+    { args: ["2", "+", "3"], expected: "5\n" },
+    { args: ["5", "%", "2"], expected: "1\n" },
+    { args: ["2", "**", "3"], expected: "8\n" },
+    { args: ["sqrt", "16"], expected: "4\n" },
+  ];
 
-  assert.equal(result.status, 0);
-  assert.equal(result.stdout, "5\n");
-  assert.equal(result.stderr, "");
+  for (const { args, expected } of examples) {
+    const result = spawnSync(process.execPath, [calculatorPath, ...args], {
+      encoding: "utf8",
+    });
+
+    assert.equal(result.status, 0, `CLI failed for ${args.join(" ")}`);
+    assert.equal(result.stdout, expected);
+    assert.equal(result.stderr, "");
+  }
 });
 
 test("CLI reports division by zero and exits unsuccessfully", () => {
@@ -83,4 +139,16 @@ test("CLI validates its arguments", () => {
   });
   assert.equal(invalidOperand.status, 1);
   assert.match(invalidOperand.stderr, /not a valid number/);
+
+  const negativeSquareRoot = spawnSync(process.execPath, [calculatorPath, "sqrt", "-1"], {
+    encoding: "utf8",
+  });
+  assert.equal(negativeSquareRoot.status, 1);
+  assert.match(negativeSquareRoot.stderr, /square root of a negative number/);
+
+  const moduloByZero = spawnSync(process.execPath, [calculatorPath, "10", "%", "0"], {
+    encoding: "utf8",
+  });
+  assert.equal(moduloByZero.status, 1);
+  assert.match(moduloByZero.stderr, /modulo by zero/);
 });
